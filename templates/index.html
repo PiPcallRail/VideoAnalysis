@@ -84,10 +84,13 @@
     <div class="card-body">
         <h5 class="card-title">Videos</h5>
         {% if videos %}
+        <form method="POST" action="{{ url_for('delete_selected') }}" id="deleteSelectedForm"
+              onsubmit="return confirm('Delete the selected video(s), their transcripts, and uploaded files? This cannot be undone.');">
         <div class="table-responsive">
             <table class="table table-hover align-middle" id="videoTable">
                 <thead>
                     <tr>
+                        <th style="width:2.5rem"><input type="checkbox" class="form-check-input" id="selectAll"></th>
                         <th>Filename</th>
                         <th>Folder</th>
                         <th>Duration</th>
@@ -99,6 +102,7 @@
                 <tbody>
                     {% for v in videos %}
                     <tr data-id="{{ v.id }}">
+                        <td><input type="checkbox" class="form-check-input video-checkbox" name="video_ids" value="{{ v.id }}"></td>
                         <td>{{ v.filename }}</td>
                         <td class="text-muted small">{{ v.folder }}</td>
                         <td>
@@ -130,10 +134,22 @@
                 </tbody>
             </table>
         </div>
-        <form method="POST" action="{{ url_for('delete_all') }}" class="mt-3 text-end"
-              onsubmit="return confirm('Delete ALL videos, transcripts, and uploaded files? This cannot be undone.');">
-            <button type="submit" class="btn btn-danger">Delete All</button>
+        <div class="mt-3 d-flex justify-content-end gap-2">
+            <button type="submit" class="btn btn-outline-danger" id="deleteSelectedBtn" disabled>Delete Selected</button>
         </form>
+            <form method="POST" action="{{ url_for('stop_processing_route') }}" id="stopProcessingForm"
+                  onsubmit="return confirm('Stop processing? The current video will finish, but no more will start.');"
+                  class="d-inline">
+                <button type="submit" class="btn btn-warning" id="stopProcessingBtn"
+                        style="{% if counts.pending + counts.processing == 0 %}display:none{% endif %}">
+                    Stop Processing
+                </button>
+            </form>
+            <form method="POST" action="{{ url_for('delete_all') }}"
+                  onsubmit="return confirm('Delete ALL videos, transcripts, and uploaded files? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger">Delete All</button>
+            </form>
+        </div>
         {% else %}
         <p class="text-muted mb-0">No videos yet. Paste a folder path above to get started.</p>
         {% endif %}
@@ -173,24 +189,25 @@
                     data.videos.forEach(v => {
                         let row = existingRows[v.id];
                         if (!row) {
-                            // New video — append a row
+                            // New video — append a row with checkbox cell
                             row = document.createElement('tr');
                             row.dataset.id = v.id;
-                            row.innerHTML = `<td></td><td class="text-muted small"></td><td></td><td></td><td class="small transcript-preview"></td><td></td>`;
+                            row.innerHTML = `<td><input type="checkbox" class="form-check-input video-checkbox" name="video_ids" value="${v.id}"></td><td></td><td class="text-muted small"></td><td></td><td></td><td class="small transcript-preview"></td><td></td>`;
                             tbody.appendChild(row);
                         }
                         const cells = row.children;
-                        cells[0].textContent = v.filename;
-                        cells[1].textContent = v.folder;
-                        cells[2].textContent = v.duration_seconds ? Math.round(v.duration_seconds) + 's' : '—';
-                        cells[3].innerHTML = '<span class="' + statusBadgeClass(v.status) + '">' + v.status + '</span>';
-                        cells[4].textContent = v.transcript_preview || '';
+                        // cells[0] is the checkbox — skip it
+                        cells[1].textContent = v.filename;
+                        cells[2].textContent = v.folder;
+                        cells[3].textContent = v.duration_seconds ? Math.round(v.duration_seconds) + 's' : '—';
+                        cells[4].innerHTML = '<span class="' + statusBadgeClass(v.status) + '">' + v.status + '</span>';
+                        cells[5].textContent = v.transcript_preview || '';
                         if (v.status === 'done') {
-                            cells[5].innerHTML = '<a href="/video/' + v.id + '" class="btn btn-sm btn-outline-primary">View</a>';
+                            cells[6].innerHTML = '<a href="/video/' + v.id + '" class="btn btn-sm btn-outline-primary">View</a>';
                         } else if (v.status === 'failed') {
-                            cells[5].innerHTML = '<form method="POST" action="/retry/' + v.id + '" class="d-inline"><button class="btn btn-sm btn-outline-warning">Retry</button></form>';
+                            cells[6].innerHTML = '<form method="POST" action="/retry/' + v.id + '" class="d-inline"><button class="btn btn-sm btn-outline-warning">Retry</button></form>';
                         } else {
-                            cells[5].innerHTML = '';
+                            cells[6].innerHTML = '';
                         }
                     });
 
@@ -199,6 +216,12 @@
                     if (noVids && data.videos.length > 0) {
                         noVids.remove();
                     }
+                }
+
+                // Show/hide Stop Processing button
+                const stopBtn = document.getElementById('stopProcessingBtn');
+                if (stopBtn) {
+                    stopBtn.style.display = (data.counts.pending + data.counts.processing > 0) ? '' : 'none';
                 }
 
                 // Stop polling when idle (nothing pending or processing)
@@ -233,6 +256,44 @@
     ['scanForm', 'uploadForm', 'folderUploadForm'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('submit', () => setTimeout(startPolling, 1000));
+    });
+
+    // Checkbox select-all and delete-selected button logic
+    const selectAll = document.getElementById('selectAll');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+    function updateDeleteBtn() {
+        if (!deleteSelectedBtn) return;
+        const checked = document.querySelectorAll('.video-checkbox:checked').length;
+        deleteSelectedBtn.disabled = checked === 0;
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            document.querySelectorAll('.video-checkbox').forEach(cb => {
+                cb.checked = selectAll.checked;
+            });
+            updateDeleteBtn();
+        });
+    }
+
+    // Delegate click events for checkboxes (handles dynamically added rows)
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('video-checkbox')) {
+            updateDeleteBtn();
+            // Uncheck "select all" if any individual box is unchecked
+            if (selectAll && !e.target.checked) {
+                selectAll.checked = false;
+            }
+            // Check "select all" if all boxes are checked
+            if (selectAll) {
+                const all = document.querySelectorAll('.video-checkbox');
+                const checked = document.querySelectorAll('.video-checkbox:checked');
+                if (all.length > 0 && all.length === checked.length) {
+                    selectAll.checked = true;
+                }
+            }
+        }
     });
 })();
 </script>

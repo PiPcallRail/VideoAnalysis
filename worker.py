@@ -18,6 +18,7 @@ from transcription import (
 
 _lock = threading.Lock()
 _running = False
+_cancel_event = threading.Event()
 
 
 def _process_videos(app):
@@ -25,6 +26,9 @@ def _process_videos(app):
     global _running
     with app.app_context():
         while True:
+            if _cancel_event.is_set():
+                break
+
             video = (
                 Video.query
                 .filter_by(status="pending")
@@ -103,5 +107,17 @@ def start_processing(app):
         if _running:
             return
         _running = True
+    _cancel_event.clear()
     t = threading.Thread(target=_process_videos, args=(app,), daemon=True)
     t.start()
+
+
+def stop_processing(app):
+    """Signal the worker to stop after the current video finishes."""
+    global _running
+    _cancel_event.set()
+    with app.app_context():
+        Video.query.filter_by(status="processing").update({"status": "pending"})
+        db.session.commit()
+    with _lock:
+        _running = False

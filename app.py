@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 
 from models import Video, db
 from transcription import VIDEO_EXTENSIONS, get_video_duration, scan_folder
-from worker import start_processing
+from worker import start_processing, stop_processing
 
 load_dotenv()
 
@@ -256,6 +256,42 @@ def retry(video_id):
         db.session.commit()
         start_processing(app)
         flash(f"Retrying {video.filename}.", "info")
+    return redirect(url_for("index"))
+
+
+@app.route("/stop-processing", methods=["POST"])
+def stop_processing_route():
+    stop_processing(app)
+    flash("Processing stopped. Remaining videos returned to pending.", "warning")
+    return redirect(url_for("index"))
+
+
+@app.route("/delete-selected", methods=["POST"])
+def delete_selected():
+    video_ids = request.form.getlist("video_ids", type=int)
+    if not video_ids:
+        flash("No videos selected.", "warning")
+        return redirect(url_for("index"))
+
+    upload_dir = os.path.join(app.root_path, "uploads")
+    deleted = 0
+    for vid_id in video_ids:
+        video = db.session.get(Video, vid_id)
+        if not video:
+            continue
+        # Delete output files
+        for path in (video.txt_path, video.srt_path):
+            if path and os.path.isfile(path):
+                os.remove(path)
+        # Delete uploaded file if it lives in uploads/
+        if video.filepath and os.path.isfile(video.filepath):
+            if os.path.normpath(video.filepath).startswith(os.path.normpath(upload_dir)):
+                os.remove(video.filepath)
+        db.session.delete(video)
+        deleted += 1
+
+    db.session.commit()
+    flash(f"Deleted {deleted} video(s).", "success")
     return redirect(url_for("index"))
 
 
