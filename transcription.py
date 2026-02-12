@@ -137,3 +137,28 @@ def write_srt(segments, output_path: str) -> None:
             end = format_srt_time(seg["end"])
             text = seg["text"].strip()
             f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
+
+
+def generate_summary(transcript_text: str) -> str:
+    """Use OpenAI to generate a short summary of what the video is about."""
+    client = OpenAI()
+    # Truncate to avoid excessive token usage on very long transcripts
+    text = transcript_text[:3000]
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You summarise video transcripts. Given a transcript, "
+                    "write a concise 1-2 sentence summary of what the video "
+                    "is about. Focus on the topic and key points. "
+                    "Do not start with 'This video' — just state the topic directly."
+                ),
+            },
+            {"role": "user", "content": text},
+        ],
+        max_tokens=150,
+        temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()

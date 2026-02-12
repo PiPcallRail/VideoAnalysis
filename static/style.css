@@ -1,10 +1,9 @@
 /* Custom styles for Video Transcriber */
 
 .transcript-preview {
-    max-width: 300px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 350px;
+    font-size: 0.85rem;
+    line-height: 1.4;
 }
 
 .transcript-full {

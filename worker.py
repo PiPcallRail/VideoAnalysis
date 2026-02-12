@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from models import Video, db
 from transcription import (
     extract_audio,
+    generate_summary,
     get_video_duration,
     segments_to_text,
     transcribe_audio,
@@ -70,7 +71,10 @@ def _process_videos(app):
                 # Update record
                 full_text = segments_to_text(seg_dicts)
                 video.transcript_text = full_text
-                video.transcript_preview = full_text[:200]
+                try:
+                    video.transcript_preview = generate_summary(full_text)
+                except Exception:
+                    video.transcript_preview = full_text[:200]
                 video.segments_json = json.dumps(seg_dicts)
                 video.txt_path = txt_path
                 video.srt_path = srt_path
