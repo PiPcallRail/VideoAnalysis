@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shutil
 
 from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
@@ -255,6 +256,29 @@ def retry(video_id):
         db.session.commit()
         start_processing(app)
         flash(f"Retrying {video.filename}.", "info")
+    return redirect(url_for("index"))
+
+
+@app.route("/delete-all", methods=["POST"])
+def delete_all():
+    videos = Video.query.all()
+
+    # Delete output files (txt and srt) for each video
+    for video in videos:
+        for path in (video.txt_path, video.srt_path):
+            if path and os.path.isfile(path):
+                os.remove(path)
+
+    # Delete all uploaded files
+    upload_dir = os.path.join(app.root_path, "uploads")
+    if os.path.isdir(upload_dir):
+        shutil.rmtree(upload_dir)
+
+    # Delete all rows from the Video table
+    Video.query.delete()
+    db.session.commit()
+
+    flash("All data deleted successfully.", "success")
     return redirect(url_for("index"))
 
 
