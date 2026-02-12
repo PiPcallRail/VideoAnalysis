@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Search: {{ query }} — Video Transcriber{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="{{ url_for('index') }}" class="text-decoration-none">&larr; Back to Dashboard</a>
+</div>
+
+{% if query %}
+<h4 class="mb-3">Results for "{{ query }}" <small class="text-muted">({{ total_matches }} match{{ 'es' if total_matches != 1 }})</small></h4>
+
+{% if results %}
+    {% for group in results %}
+    <div class="card mb-3">
+        <div class="card-header">
+            <a href="{{ url_for('detail', video_id=group.video.id) }}" class="text-decoration-none fw-bold">
+                {{ group.video.filename }}
+            </a>
+        </div>
+        <ul class="list-group list-group-flush">
+            {% for match in group.matches %}
+            <li class="list-group-item">
+                <a href="{{ url_for('detail', video_id=group.video.id) }}#seg-{{ match.index }}"
+                   class="segment-time me-2">{{ match.timestamp }}</a>
+                {{ match.text }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="alert alert-info">No results found for "{{ query }}".</div>
+{% endif %}
+
+{% else %}
+<p class="text-muted">Enter a keyword above to search across all transcripts.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ video.filename }} — Video Transcriber{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="{{ url_for('index') }}" class="text-decoration-none">&larr; Back to Dashboard</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">{{ video.filename }}</h5>
+        <span class="badge bg-{{ 'success' if video.status == 'done' else 'warning' if video.status == 'processing' else 'danger' if video.status == 'failed' else 'secondary' }}">
+            {{ video.status }}
+        </span>
+    </div>
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Full Path</dt>
+            <dd class="col-sm-9 text-break">{{ video.filepath }}</dd>
+
+            <dt class="col-sm-3">Folder</dt>
+            <dd class="col-sm-9">{{ video.folder }}</dd>
+
+            <dt class="col-sm-3">Duration</dt>
+            <dd class="col-sm-9">
+                {% if video.duration_seconds %}
+                    {{ "%.1f"|format(video.duration_seconds) }} seconds
+                {% else %}
+                    Unknown
+                {% endif %}
+            </dd>
+
+            <dt class="col-sm-3">Processed</dt>
+            <dd class="col-sm-9">{{ video.processed_at or 'Not yet' }}</dd>
+        </dl>
+    </div>
+</div>
+
+{% if video.status == 'failed' %}
+<div class="alert alert-danger">
+    <strong>Error:</strong> {{ video.error_message or 'Unknown error' }}
+    <form method="POST" action="{{ url_for('retry', video_id=video.id) }}" class="d-inline ms-3">
+        <button class="btn btn-sm btn-warning">Retry</button>
+    </form>
+</div>
+{% endif %}
+
+{% if video.status == 'done' %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Transcript</h5>
+        <div>
+            <a href="{{ url_for('download', video_id=video.id, file_type='txt') }}"
+               class="btn btn-sm btn-outline-secondary">Download .txt</a>
+            <a href="{{ url_for('download', video_id=video.id, file_type='srt') }}"
+               class="btn btn-sm btn-outline-secondary ms-1">Download .srt</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if segments %}
+        <div class="segment-list">
+            {% for seg in segments %}
+            <div class="segment-item" id="seg-{{ seg.index }}">
+                <span class="segment-time">{{ seg.timestamp }}</span>
+                <span class="segment-text">{{ seg.text }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <pre class="transcript-full mb-0">{{ video.transcript_text }}</pre>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

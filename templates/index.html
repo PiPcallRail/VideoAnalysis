@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Video Transcriber{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Add Videos</h5>
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-upload" type="button">Upload Files</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-folder-upload" type="button">Upload Folder</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-path" type="button">Local Path</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <!-- Upload individual files -->
+                    <div class="tab-pane fade show active" id="tab-upload">
+                        <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="uploadForm">
+                            <div class="mb-2">
+                                <input type="file" name="files" class="form-control" multiple
+                                       accept="video/*,.mp4,.avi,.mkv,.mov,.webm,.flv,.wmv,.m4v,.mpg,.mpeg">
+                            </div>
+                            <button class="btn btn-primary" type="submit">Upload &amp; Process</button>
+                        </form>
+                    </div>
+                    <!-- Upload entire folder -->
+                    <div class="tab-pane fade" id="tab-folder-upload">
+                        <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="folderUploadForm">
+                            <div class="mb-2">
+                                <input type="file" name="files" class="form-control" webkitdirectory directory multiple
+                                       accept="video/*,.mp4,.avi,.mkv,.mov,.webm,.flv,.wmv,.m4v,.mpg,.mpeg">
+                            </div>
+                            <button class="btn btn-primary" type="submit">Upload Folder &amp; Process</button>
+                        </form>
+                    </div>
+                    <!-- Paste local folder path -->
+                    <div class="tab-pane fade" id="tab-path">
+                        <form method="POST" action="{{ url_for('scan') }}" id="scanForm">
+                            <div class="input-group">
+                                <input type="text" name="folder" class="form-control"
+                                       placeholder="Paste folder path containing videos..."
+                                       required>
+                                <button class="btn btn-primary" type="submit">Scan &amp; Process</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <div class="d-flex justify-content-around">
+                    <div>
+                        <div class="fs-3 fw-bold" id="countDone">{{ counts.done }}</div>
+                        <small class="text-muted">Done</small>
+                    </div>
+                    <div>
+                        <div class="fs-3 fw-bold text-warning" id="countProcessing">{{ counts.processing }}</div>
+                        <small class="text-muted">Processing</small>
+                    </div>
+                    <div>
+                        <div class="fs-3 fw-bold text-secondary" id="countPending">{{ counts.pending }}</div>
+                        <small class="text-muted">Pending</small>
+                    </div>
+                    <div>
+                        <div class="fs-3 fw-bold text-danger" id="countFailed">{{ counts.failed }}</div>
+                        <small class="text-muted">Failed</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Videos</h5>
+        {% if videos %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle" id="videoTable">
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Folder</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Preview</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in videos %}
+                    <tr data-id="{{ v.id }}">
+                        <td>{{ v.filename }}</td>
+                        <td class="text-muted small">{{ v.folder }}</td>
+                        <td>
+                            {% if v.duration_seconds %}
+                                {{ "%.0f"|format(v.duration_seconds) }}s
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if v.status == 'done' else 'warning' if v.status == 'processing' else 'danger' if v.status == 'failed' else 'secondary' }}">
+                                {{ v.status }}
+                            </span>
+                        </td>
+                        <td class="small transcript-preview">
+                            {{ v.transcript_preview or '' }}
+                        </td>
+                        <td>
+                            {% if v.status == 'done' %}
+                                <a href="{{ url_for('detail', video_id=v.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                            {% elif v.status == 'failed' %}
+                                <form method="POST" action="{{ url_for('retry', video_id=v.id) }}" class="d-inline">
+                                    <button class="btn btn-sm btn-outline-warning">Retry</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No videos yet. Paste a folder path above to get started.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    let polling = null;
+
+    function statusBadgeClass(status) {
+        const map = {done: 'success', processing: 'warning', failed: 'danger', pending: 'secondary'};
+        return 'badge bg-' + (map[status] || 'secondary');
+    }
+
+    function refreshStatus() {
+        fetch('{{ url_for("api_status") }}')
+            .then(r => r.json())
+            .then(data => {
+                // Update counts
+                document.getElementById('countDone').textContent = data.counts.done;
+                document.getElementById('countProcessing').textContent = data.counts.processing;
+                document.getElementById('countPending').textContent = data.counts.pending;
+                document.getElementById('countFailed').textContent = data.counts.failed;
+
+                // Update table rows
+                const tbody = document.querySelector('#videoTable tbody');
+                if (tbody && data.videos) {
+                    // Build a map of existing rows by video id
+                    const existingRows = {};
+                    tbody.querySelectorAll('tr[data-id]').forEach(row => {
+                        existingRows[row.dataset.id] = row;
+                    });
+
+                    data.videos.forEach(v => {
+                        let row = existingRows[v.id];
+                        if (!row) {
+                            // New video — append a row
+                            row = document.createElement('tr');
+                            row.dataset.id = v.id;
+                            row.innerHTML = `<td></td><td class="text-muted small"></td><td></td><td></td><td class="small transcript-preview"></td><td></td>`;
+                            tbody.appendChild(row);
+                        }
+                        const cells = row.children;
+                        cells[0].textContent = v.filename;
+                        cells[1].textContent = v.folder;
+                        cells[2].textContent = v.duration_seconds ? Math.round(v.duration_seconds) + 's' : '—';
+                        cells[3].innerHTML = '<span class="' + statusBadgeClass(v.status) + '">' + v.status + '</span>';
+                        cells[4].textContent = v.transcript_preview || '';
+                        if (v.status === 'done') {
+                            cells[5].innerHTML = '<a href="/video/' + v.id + '" class="btn btn-sm btn-outline-primary">View</a>';
+                        } else if (v.status === 'failed') {
+                            cells[5].innerHTML = '<form method="POST" action="/retry/' + v.id + '" class="d-inline"><button class="btn btn-sm btn-outline-warning">Retry</button></form>';
+                        } else {
+                            cells[5].innerHTML = '';
+                        }
+                    });
+
+                    // Remove the "No videos" message if it exists
+                    const noVids = document.querySelector('.text-muted.mb-0');
+                    if (noVids && data.videos.length > 0) {
+                        noVids.remove();
+                    }
+                }
+
+                // Stop polling when idle (nothing pending or processing)
+                if (data.counts.pending === 0 && data.counts.processing === 0) {
+                    stopPolling();
+                }
+            })
+            .catch(() => {});
+    }
+
+    function startPolling() {
+        if (!polling) {
+            polling = setInterval(refreshStatus, 3000);
+        }
+    }
+
+    function stopPolling() {
+        if (polling) {
+            clearInterval(polling);
+            polling = null;
+        }
+    }
+
+    // Start polling if there are pending/processing items
+    const pending = parseInt(document.getElementById('countPending').textContent) || 0;
+    const processing = parseInt(document.getElementById('countProcessing').textContent) || 0;
+    if (pending > 0 || processing > 0) {
+        startPolling();
+    }
+
+    // Start polling after any form submit
+    ['scanForm', 'uploadForm', 'folderUploadForm'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('submit', () => setTimeout(startPolling, 1000));
+    });
+})();
+</script>
+{% endblock %}
