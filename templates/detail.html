@@ -54,6 +54,10 @@
                class="btn btn-sm btn-outline-secondary">Download .txt</a>
             <a href="{{ url_for('download', video_id=video.id, file_type='srt') }}"
                class="btn btn-sm btn-outline-secondary ms-1">Download .srt</a>
+            {% if video.report_path %}
+            <a href="{{ url_for('download', video_id=video.id, file_type='docx') }}"
+               class="btn btn-sm btn-primary ms-1">Download Report (.docx)</a>
+            {% endif %}
         </div>
     </div>
     <div class="card-body">
@@ -71,5 +75,31 @@
         {% endif %}
     </div>
 </div>
+
+{% if screenshots %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Screenshots ({{ screenshots|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            {% for shot in screenshots %}
+            <div class="col-md-6 col-lg-4">
+                {% if shot.url %}
+                <a href="{{ shot.url }}" target="_blank">
+                    <img src="{{ shot.url }}" class="img-fluid rounded shadow-sm w-100"
+                         alt="{{ shot.description }}" loading="lazy">
+                </a>
+                {% endif %}
+                <small class="text-muted d-block mt-1">
+                    <strong>{{ "%.0f"|format(shot.timestamp) }}s</strong> — {{ shot.description }}
+                </small>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% endif %}
 {% endblock %}

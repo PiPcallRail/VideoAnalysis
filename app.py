@@ -26,6 +26,18 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        # Add new columns if they don't exist (SQLite migration)
+        import sqlite3
+        db_path = os.path.join(app.instance_path, "videos.db")
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
+            for col in ["report_path TEXT", "screenshots_json TEXT", "output_dir TEXT"]:
+                try:
+                    conn.execute(f"ALTER TABLE video ADD COLUMN {col}")
+                except sqlite3.OperationalError:
+                    pass
+            conn.commit()
+            conn.close()
 
     return app
 
@@ -156,7 +168,19 @@ def detail(video_id):
                 "timestamp": _format_timestamp(seg["start"]),
                 "text": seg["text"],
             })
-    return render_template("detail.html", video=video, segments=segments)
+    # Gather screenshots
+    screenshots = []
+    if video.screenshots_json:
+        screenshots = json.loads(video.screenshots_json)
+        for shot in screenshots:
+            if shot.get("filename"):
+                shot["url"] = url_for(
+                    "screenshot", video_id=video.id, filename=shot["filename"]
+                )
+
+    return render_template(
+        "detail.html", video=video, segments=segments, screenshots=screenshots
+    )
 
 
 def _format_timestamp(seconds):
@@ -226,6 +250,7 @@ def api_status():
                 "folder": v.folder,
                 "duration_seconds": v.duration_seconds,
                 "status": v.status,
+                "has_report": bool(v.report_path),
                 "transcript_preview": v.transcript_preview,
             }
             for v in videos
@@ -241,9 +266,25 @@ def download(video_id, file_type):
         return send_file(video.txt_path, as_attachment=True)
     elif file_type == "srt" and video.srt_path:
         return send_file(video.srt_path, as_attachment=True)
+    elif file_type == "docx" and video.report_path:
+        return send_file(video.report_path, as_attachment=True)
     else:
         flash("File not available.", "warning")
         return redirect(url_for("detail", video_id=video_id))
+
+
+@app.route("/screenshot/<int:video_id>/<filename>")
+def screenshot(video_id, filename):
+    video = db.get_or_404(Video, video_id)
+    if not video.output_dir:
+        flash("Screenshots not available.", "warning")
+        return redirect(url_for("detail", video_id=video_id))
+    safe = secure_filename(filename)
+    path = os.path.join(video.output_dir, "screenshots", safe)
+    if not os.path.isfile(path):
+        flash("Screenshot not found.", "warning")
+        return redirect(url_for("detail", video_id=video_id))
+    return send_file(path)
 
 
 @app.route("/retry/<int:video_id>", methods=["POST"])
@@ -279,10 +320,14 @@ def delete_selected():
         video = db.session.get(Video, vid_id)
         if not video:
             continue
-        # Delete output files
-        for path in (video.txt_path, video.srt_path):
-            if path and os.path.isfile(path):
-                os.remove(path)
+        # Delete output folder (contains txt, srt, screenshots, report)
+        if video.output_dir and os.path.isdir(video.output_dir):
+            shutil.rmtree(video.output_dir)
+        else:
+            # Fallback: old-style individual file cleanup
+            for path in (video.txt_path, video.srt_path):
+                if path and os.path.isfile(path):
+                    os.remove(path)
         # Delete uploaded file if it lives in uploads/
         if video.filepath and os.path.isfile(video.filepath):
             if os.path.normpath(video.filepath).startswith(os.path.normpath(upload_dir)):
@@ -299,13 +344,11 @@ def delete_selected():
 def delete_all():
     videos = Video.query.all()
 
-    # Delete output files (txt and srt) for each video
-    for video in videos:
-        for path in (video.txt_path, video.srt_path):
-            if path and os.path.isfile(path):
-                os.remove(path)
+    # Delete all output folders and uploaded files
+    output_dir = os.path.join(app.root_path, "output")
+    if os.path.isdir(output_dir):
+        shutil.rmtree(output_dir)
 
-    # Delete all uploaded files
     upload_dir = os.path.join(app.root_path, "uploads")
     if os.path.isdir(upload_dir):
         shutil.rmtree(upload_dir)

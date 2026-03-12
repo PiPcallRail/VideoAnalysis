@@ -123,6 +123,9 @@
                         <td>
                             {% if v.status == 'done' %}
                                 <a href="{{ url_for('detail', video_id=v.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                {% if v.report_path %}
+                                <a href="{{ url_for('download', video_id=v.id, file_type='docx') }}" class="btn btn-sm btn-primary ms-1">Report</a>
+                                {% endif %}
                             {% elif v.status == 'failed' %}
                                 <form method="POST" action="{{ url_for('retry', video_id=v.id) }}" class="d-inline">
                                     <button class="btn btn-sm btn-outline-warning">Retry</button>
@@ -203,7 +206,11 @@
                         cells[4].innerHTML = '<span class="' + statusBadgeClass(v.status) + '">' + v.status + '</span>';
                         cells[5].textContent = v.transcript_preview || '';
                         if (v.status === 'done') {
-                            cells[6].innerHTML = '<a href="/video/' + v.id + '" class="btn btn-sm btn-outline-primary">View</a>';
+                            let btns = '<a href="/video/' + v.id + '" class="btn btn-sm btn-outline-primary">View</a>';
+                            if (v.has_report) {
+                                btns += ' <a href="/download/' + v.id + '/docx" class="btn btn-sm btn-primary ms-1">Report</a>';
+                            }
+                            cells[6].innerHTML = btns;
                         } else if (v.status === 'failed') {
                             cells[6].innerHTML = '<form method="POST" action="/retry/' + v.id + '" class="d-inline"><button class="btn btn-sm btn-outline-warning">Retry</button></form>';
                         } else {

@@ -22,5 +22,8 @@ class Video(db.Model):
     segments_json = db.Column(db.Text, nullable=True)
     txt_path = db.Column(db.Text, nullable=True)
     srt_path = db.Column(db.Text, nullable=True)
+    report_path = db.Column(db.Text, nullable=True)
+    screenshots_json = db.Column(db.Text, nullable=True)
+    output_dir = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     processed_at = db.Column(db.DateTime, nullable=True)
